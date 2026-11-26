@@ -12,7 +12,9 @@ const PUBLIC_DIR = path.join(here, "public");
 const PORT = Number(process.env.PORT ?? 3000);
 const MODEL = process.env.MODEL ?? "claude-opus-5-5";
 const EFFORT = process.env.EFFORT ?? "low"; // 통화는 응답 속도가 중요해서 low 기본
-const MAX_TURNS = 40; // 너무 긴 기록은 앞부분을 잘라 보냄
+const MAX_TURNS = 40;
+// 서버 측 fallback 을 받는 모델 (Haiku 등은 미지원 → 옵션 생략)
+const SUPPORTS_FALLBACK = /^claude-(opus-5|sonnet-5-5|fable-5)/.test(MODEL); // 너무 긴 기록은 앞부분을 잘라 보냄
 
 const client = new Anthropic();
 
@@ -95,9 +97,8 @@ async function handleChat(req, res) {
         model: MODEL,
         max_tokens: 2000,
         output_config: { effort: EFFORT },
-        // 안전 분류기가 거절하면 서버에서 다른 모델로 자동 이어받기
-        betas: ["server-side-fallback-2026-07-01"],
-        fallbacks: "default",
+        // 안전 분류기가 거절하면 서버에서 다른 모델로 자동 이어받기 (지원 모델만)
+        ...(SUPPORTS_FALLBACK ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" } : {}),
         system: [
           { type: "text", text: buildSystemPrompt(persona), cache_control: { type: "ephemeral" } },
         ],
