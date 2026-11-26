@@ -35,6 +35,7 @@ npm start              # http://localhost:3000
 - **톤**: 대기 화면에서 상대(하루/달/솔)를 고르면 말투와 기본 빠르기·높낮이가 바뀝니다.
 - **목소리**: "목소리 설정"에서 선택. `[여성]`/`[남성]` 표시, 미리 듣기 가능, 설정은 브라우저에 저장됩니다.
   - **고음질 (클라우드)**: `.env`에 `GOOGLE_TTS_API_KEY`를 넣으면 Google Cloud TTS 한국어 음성(HD/Neural2/WaveNet, 남녀)이 목록에 나옵니다. 앞 문장을 읽는 동안 다음 문장 음성을 미리 받아와 끊김을 줄입니다. 실패하면 그 문장은 기기 음성으로 대체합니다.
+  - 기본값은 멘탈케어에 어울리는 ★추천 여성 음성(따뜻한 Sulafat → 다정한 Vindemiatrix → 부드러운 Achernar → 매끄러운 Despina → 앳된 Leda). "추천 여성 목소리 이어 듣기"로 같은 문장을 차례로 들어보고 고를 수 있습니다.
   - **이 기기 음성**: 키가 없어도 동작하지만 기기마다 목록이 다릅니다.
 - Google 키 발급: Google Cloud 콘솔 → "Cloud Text-to-Speech API" 사용 설정 → 사용자 인증 정보 → API 키 생성 (가능하면 이 API로만 제한). 매달 무료 사용량이 있고 그 이상은 과금됩니다.
 - 다른 TTS(CLOVA Voice, ElevenLabs 등)는 `tts.mjs`의 `listVoices`/`synthesize`만 바꾸면 됩니다.

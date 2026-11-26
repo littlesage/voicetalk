@@ -47,7 +47,7 @@
       koVoices.some((v) => "device:" + v.name === voiceCfg.name);
     if (!valid || !voiceCfg.userPicked) {
       // 기본값: 클라우드 여성 고음질 > 기기의 자연스러운 음성 > 아무거나
-      const c = cloudVoices.find((v) => v.gender === "여성") || cloudVoices[0];
+      const c = cloudVoices.find((v) => v.pick) || cloudVoices.find((v) => v.gender === "여성") || cloudVoices[0];
       const d = koVoices.find((v) => /natural|neural|premium|enhanced|yuna|google/i.test(v.name)) || koVoices[0];
       voiceCfg.name = c ? "cloud:" + c.id : d ? "device:" + d.name : null;
     }
@@ -74,7 +74,10 @@
     };
     addGroup(
       "고음질 (클라우드)",
-      cloudVoices.map((v) => ["cloud:" + v.id, `[${v.gender || "?"}] ${v.tier} · ${v.id.replace(/^ko-KR-/, "").replace(/^(Chirp3-HD|Neural2|Wavenet|Standard)-/, "")}`])
+      cloudVoices.map((v) => [
+        "cloud:" + v.id,
+        `${v.pick ? "★ " : ""}[${v.gender || "?"}] ${v.style ? v.style + " 목소리 · " : v.tier + " · "}${v.id.replace(/^ko-KR-/, "").replace(/^(Chirp3-HD|Neural2|Wavenet|Standard)-/, "")}`,
+      ])
     );
     addGroup(
       "이 기기 음성",
@@ -89,6 +92,7 @@
       sel.appendChild(o);
     }
     sel.disabled = !cloudVoices.length && !koVoices.length;
+    $("compareBtn").hidden = !cloudVoices.some((v) => v.pick);
     $("rate").value = voiceCfg.rate;
     $("pitch").value = voiceCfg.pitch;
     const noPitch = isCloud() && !cloudVoice()?.pitch;
@@ -115,6 +119,39 @@
   $("pitch").oninput = (e) => { voiceCfg.pitch = Number(e.target.value); store.set("voiceCfg", voiceCfg); };
   $("previewBtn").onclick = () => preview();
 
+  // 추천 여성 목소리 이어 듣기: 같은 문장을 목소리별로 차례대로 들려줌 (다시 누르면 멈춤)
+  let compareGen = 0;
+  let comparing = false;
+  $("compareBtn").onclick = async () => {
+    const btn = $("compareBtn");
+    if (comparing) {
+      compareGen++;
+      player.pause();
+      return;
+    }
+    const list = cloudVoices.filter((v) => v.pick);
+    if (!list.length) return;
+    const my = ++compareGen;
+    comparing = true;
+    btn.textContent = "멈추기";
+    synth?.cancel();
+    for (const v of list) {
+      if (my !== compareGen) break;
+      $("voiceSel").value = "cloud:" + v.id; // 지금 나오는 목소리를 목록에 표시
+      const blob = await fetchCloudAudio(`${v.style} 목소리예요. 오늘 하루도 정말 수고 많았어요.`, v.id);
+      if (!blob || my !== compareGen) continue;
+      player.src = URL.createObjectURL(blob);
+      await new Promise((res) => {
+        player.onended = player.onerror = player.onpause = res;
+        player.play().catch(res);
+      });
+    }
+    player.onended = player.onerror = player.onpause = null;
+    comparing = false;
+    btn.textContent = "추천 여성 목소리 이어 듣기";
+    $("voiceSel").value = voiceCfg.name; // 원래 선택으로 복귀 — 마음에 드는 걸 목록에서 고르면 됨
+  };
+
   function makeUtterance(text) {
     const u = new SpeechSynthesisUtterance(text);
     u.lang = "ko-KR";
@@ -125,8 +162,8 @@
   }
 
   // 클라우드 TTS: 문장 → mp3 Blob (실패하면 null → 기기 음성으로 대체)
-  function fetchCloudAudio(text) {
-    const v = cloudVoice();
+  function fetchCloudAudio(text, voiceId) {
+    const v = voiceId ? { id: voiceId } : cloudVoice();
     if (!v) return Promise.resolve(null);
     return fetch("/api/tts", {
       method: "POST",

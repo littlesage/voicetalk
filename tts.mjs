@@ -9,6 +9,29 @@ export const ttsEnabled = Boolean(KEY);
 
 let voiceCache = null;
 
+// Chirp3-HD 여성 음성의 성격 (Google 음성 설명 기준). 멘탈케어에 어울리는 순서대로 정렬.
+// pick: 추천 표시(★) 대상
+const FEMALE_STYLE = [
+  ["Sulafat", "따뜻한", true],
+  ["Vindemiatrix", "다정한", true],
+  ["Achernar", "부드러운", true],
+  ["Despina", "매끄러운", true],
+  ["Leda", "앳된", true],
+  ["Aoede", "산뜻한", false],
+  ["Callirrhoe", "편안한", false],
+  ["Erinome", "맑은", false],
+  ["Autonoe", "밝은", false],
+  ["Zephyr", "화사한", false],
+  ["Laomedeia", "경쾌한", false],
+  ["Kore", "또렷한", false],
+  ["Gacrux", "성숙한", false],
+  ["Pulcherrima", "힘있는", false],
+];
+function styleOf(name) {
+  const i = FEMALE_STYLE.findIndex(([n]) => name.endsWith("-" + n));
+  return i < 0 ? { order: 99, style: "", pick: false } : { order: i, style: FEMALE_STYLE[i][1], pick: FEMALE_STYLE[i][2] };
+}
+
 // 음성 이름으로 품질 등급 구분 (Chirp3-HD > Neural2 > Wavenet > Standard)
 function tierOf(name) {
   if (/Chirp3-HD|Chirp-HD/i.test(name)) return { rank: 0, label: "HD" };
@@ -27,8 +50,12 @@ export async function listVoices() {
     .filter((v) => v.languageCodes?.includes("ko-KR") && !/Studio|Polyglot/i.test(v.name))
     .map((v) => {
       const t = tierOf(v.name);
+      const st = styleOf(v.name);
       return {
         id: v.name,
+        style: st.style,
+        pick: st.pick,
+        order: st.order,
         gender: v.ssmlGender === "MALE" ? "남성" : v.ssmlGender === "FEMALE" ? "여성" : "",
         tier: t.label,
         rank: t.rank,
@@ -36,7 +63,11 @@ export async function listVoices() {
         pitch: t.rank !== 0,
       };
     })
-    .sort((a, b) => a.rank - b.rank || a.gender.localeCompare(b.gender) || a.id.localeCompare(b.id));
+    // 추천 여성 → 그 외 여성 → 남성, 같은 그룹에선 품질 등급·성격 순
+    .sort((a, b) => {
+      const g = (v) => (v.pick ? 0 : v.gender === "여성" ? 1 : 2);
+      return g(a) - g(b) || a.rank - b.rank || a.order - b.order || a.id.localeCompare(b.id);
+    });
   return voiceCache;
 }
 
