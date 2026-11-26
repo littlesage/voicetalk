@@ -4,6 +4,12 @@
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
   const synth = window.speechSynthesis;
 
+  // 서버에 APP_PASSWORD 가 걸려 있으면 모든 /api 요청에 비밀번호를 붙임
+  let appPw = "";
+  try { appPw = localStorage.getItem("appPw") || ""; } catch {}
+  const api = (url, opts = {}) =>
+    fetch(url, { ...opts, headers: { ...(opts.headers || {}), "x-app-password": appPw } });
+
   const VOICE_TUNING = { haru: { rate: 0.95, pitch: 1.0 }, dal: { rate: 0.88, pitch: 0.9 }, sol: { rate: 1.02, pitch: 1.1 } };
   const SILENCE_MS = 1400; // 이만큼 조용하면 말이 끝난 것으로 봄
 
@@ -165,7 +171,7 @@
   function fetchCloudAudio(text, voiceId) {
     const v = voiceId ? { id: voiceId } : cloudVoice();
     if (!v) return Promise.resolve(null);
-    return fetch("/api/tts", {
+    return api("/api/tts", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text, voice: v.id, rate: voiceCfg.rate, pitch: voiceCfg.pitch }),
@@ -207,13 +213,15 @@
 
   if (synth) synth.onvoiceschanged = refreshVoices;
   refreshVoices();
-  fetch("/api/tts/voices")
+  function loadCloudVoices() {
+  api("/api/tts/voices")
     .then((r) => r.json())
     .then((d) => {
       cloudVoices = d.enabled ? d.voices : [];
       refreshVoices();
     })
     .catch(() => {});
+  }
 
   const warn = [];
   if (!SR) warn.push("이 브라우저는 음성 인식을 지원하지 않아요. 크롬/엣지/사파리를 쓰거나 키보드로 대화할 수 있어요.");
@@ -223,7 +231,8 @@
     $("support").textContent = warn.join(" ");
   }
 
-  fetch("/api/personas")
+  function loadPersonas() {
+  api("/api/personas")
     .then((r) => r.json())
     .then((list) => {
       personas = list;
@@ -244,6 +253,30 @@
         box.appendChild(b);
       }
     });
+  }
+
+  // ---------- 비밀번호 확인 후 시작 ----------
+  async function boot() {
+    const r = await api("/api/auth").catch(() => null);
+    if (r && r.status === 401) {
+      $("gate").hidden = false;
+      $("lobby").hidden = true;
+      if (appPw) $("gateMsg").textContent = "비밀번호가 맞지 않아요.";
+      $("gateInput").focus();
+      return;
+    }
+    $("gate").hidden = true;
+    $("lobby").hidden = false;
+    loadPersonas();
+    loadCloudVoices();
+  }
+  $("gateForm").onsubmit = (e) => {
+    e.preventDefault();
+    appPw = $("gateInput").value;
+    try { localStorage.setItem("appPw", appPw); } catch {}
+    boot();
+  };
+  boot();
 
   // ---------- 화면 상태 ----------
   function setState(s, label) {
@@ -459,7 +492,7 @@
     };
 
     try {
-      const res = await fetch("/api/chat", {
+      const res = await api("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ persona, messages: history }),

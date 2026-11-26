@@ -1,0 +1,20 @@
+# Render 블루프린트: Render 대시보드에서 이 저장소를 연결하면 아래 설정으로 자동 생성됨
+services:
+  - type: web
+    name: voicetalk
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.mjs
+    healthCheckPath: /
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: APP_PASSWORD
+        sync: false
+      - key: CLOVA_CLIENT_ID
+        sync: false
+      - key: CLOVA_CLIENT_SECRET
+        sync: false
+      - key: EFFORT
+        value: low

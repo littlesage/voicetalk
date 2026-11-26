@@ -16,7 +16,19 @@
 | `tts.mjs` | 클라우드 TTS (CLOVA Voice, Google) — 음성 목록, 문장 → mp3 |
 | `public/app.js` | 통화 루프: 듣기 → 침묵 1.4초 감지 → 전송 → 문장별 읽기 → 다시 듣기 |
 
-## 실행
+## 폰에서 쓰기 (Render 무료 배포 — 폰 브라우저만으로 가능)
+1. https://render.com 가입 (GitHub 계정으로 로그인)
+2. **New + → Blueprint** → `littlesage/voicetalk` 선택 (`render.yaml` 이 자동으로 읽힘)
+3. 값 입력:
+   - `ANTHROPIC_API_KEY` — https://console.anthropic.com 에서 발급 (필수)
+   - `APP_PASSWORD` — 아무 비밀번호 (필수! 없으면 주소 아는 누구나 내 키로 대화 가능)
+   - `CLOVA_CLIENT_ID` / `CLOVA_CLIENT_SECRET` — CLOVA 목소리 (없으면 폰 기본 음성)
+4. **Apply** → 몇 분 뒤 나오는 `https://voicetalk-xxxx.onrender.com` 주소를 폰으로 열기
+5. 비밀번호 입력 → 마이크 허용 → 통화 버튼
+- 팁: 브라우저 메뉴의 "홈 화면에 추가"로 앱처럼 쓸 수 있어요.
+- 무료 플랜은 15분 동안 안 쓰면 잠들어서, 다음 접속 때 30초~1분 정도 깨어나는 시간이 걸립니다.
+
+## PC에서 실행
 ```bash
 npm install
 cp .env.example .env   # ANTHROPIC_API_KEY 입력

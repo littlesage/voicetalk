@@ -1,4 +1,5 @@
 import http from "node:http";
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -177,7 +178,24 @@ async function serveStatic(req, res) {
   }
 }
 
+// 인터넷에 공개할 땐 APP_PASSWORD 를 꼭 설정 (남이 API 키를 쓰지 못하게)
+const APP_PASSWORD = process.env.APP_PASSWORD ?? "";
+function authorized(req) {
+  if (!APP_PASSWORD) return true;
+  const given = Buffer.from(String(req.headers["x-app-password"] ?? ""));
+  const want = Buffer.from(APP_PASSWORD);
+  return given.length === want.length && crypto.timingSafeEqual(given, want);
+}
+
 const server = http.createServer((req, res) => {
+  if (req.url.startsWith("/api/") && !authorized(req)) {
+    res.writeHead(401, { "Content-Type": "application/json" }).end('{"error":"password"}');
+    return;
+  }
+  if (req.method === "GET" && req.url === "/api/auth") {
+    res.writeHead(200, { "Content-Type": "application/json" }).end('{"ok":true}');
+    return;
+  }
   if (req.method === "POST" && req.url === "/api/chat") return handleChat(req, res);
   if (req.method === "GET" && req.url === "/api/tts/voices") return handleVoices(res);
   if (req.method === "POST" && req.url === "/api/tts") return handleTts(req, res);
@@ -198,5 +216,6 @@ server.listen(PORT, () => {
       ? `🔊 클라우드 TTS 사용: ${ttsProviders.join(", ")}`
       : "🔈 클라우드 TTS 꺼짐 → 브라우저 음성 사용 (.env 에 CLOVA_* 또는 GOOGLE_TTS_API_KEY 를 넣으면 켜짐)"
   );
+  if (!APP_PASSWORD) console.warn("⚠ APP_PASSWORD 가 없어요. 인터넷에 공개한다면 꼭 설정하세요.");
   console.log(`VoiceTalk 멘탈케어 AI → http://localhost:${PORT}  (model=${MODEL}, effort=${EFFORT})`);
 });

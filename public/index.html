@@ -9,8 +9,19 @@
 </head>
 <body>
   <main class="phone">
+    <!-- 비밀번호 화면 (서버에 APP_PASSWORD 가 있을 때만) -->
+    <section id="gate" class="screen" hidden>
+      <h1>마음 통화</h1>
+      <p class="sub">비밀번호를 입력해 주세요.</p>
+      <form id="gateForm" class="text-form">
+        <input id="gateInput" type="password" autocomplete="current-password" placeholder="비밀번호" />
+        <button type="submit">들어가기</button>
+      </form>
+      <p id="gateMsg" class="warn"></p>
+    </section>
+
     <!-- 대기 화면 -->
-    <section id="lobby" class="screen">
+    <section id="lobby" class="screen" hidden>
       <h1>마음 통화</h1>
       <p class="sub">말하고 싶을 때, 언제든 전화 걸어요.</p>
       <div id="personas" class="personas"></div>
