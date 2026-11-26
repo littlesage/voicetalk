@@ -13,7 +13,7 @@
 |---|---|
 | `prompt.mjs` | 페르소나(하루·달·솔)와 멘탈케어 대사 원칙 — **대사 톤을 바꾸려면 여기만 고치면 됩니다** |
 | `server.mjs` | 정적 파일 + `/api/chat` 스트리밍 프록시 + `/api/tts` (API 키는 서버에만) |
-| `tts.mjs` | 클라우드 TTS (CLOVA Voice, Google) — 음성 목록, 문장 → mp3 |
+| `tts.mjs` | 클라우드 TTS (ElevenLabs, CLOVA Voice, Google) — 음성 목록, 문장 → mp3 |
 | `public/app.js` | 통화 루프: 듣기 → 침묵 1.4초 감지 → 전송 → 문장별 읽기 → 다시 듣기 |
 
 ## 폰에서 쓰기 (Render 무료 배포 — 폰 브라우저만으로 가능)
@@ -51,8 +51,15 @@ npm start              # http://localhost:3000
 - **목소리**: "목소리 설정"에서 선택. `[여성]`/`[남성]` 표시, 미리 듣기, "추천 여성 목소리 이어 듣기"로 ★ 음성을 차례로 비교. 설정은 브라우저에 저장됩니다.
 - 클라우드 음성은 앞 문장을 읽는 동안 다음 문장을 미리 받아와 끊김을 줄이고, 실패한 문장은 기기 음성으로 대신 읽습니다.
 
-### 네이버 CLOVA Voice (기본 추천)
-한국어가 가장 자연스러워서 목록 맨 위에 나오고, 기본값은 **유나(vyuna)** 입니다.
+### ElevenLabs (캐릭터 목소리: 귀여운 · 나긋한 · 속삭이는 …)
+1. https://elevenlabs.io 가입 → 프로필 → **API Keys** 에서 키 발급 → `ELEVENLABS_API_KEY`
+2. **Voices → Library** 에서 `Korean` 으로 검색하고 cute / soft / seductive / whisper 같은 태그로 골라 들어보기
+3. 마음에 드는 목소리에서 **Add to my voices** → 앱 목록 맨 위에 ★ 로 나옴 (10분 안에 반영)
+- 무료 플랜은 월 1만 자 정도라 짧게 테스트용, 계속 쓰려면 유료 플랜 필요
+- `ELEVENLABS_MODEL=eleven_flash_v2_5` 로 바꾸면 더 빠르고 저렴 (기본 `eleven_multilingual_v2` 는 표현력 우선)
+
+### 네이버 CLOVA Voice
+한국어 발음이 자연스럽고, ElevenLabs 를 안 쓰면 기본값은 **유나(vyuna)** 입니다.
 1. 네이버 클라우드 플랫폼 콘솔 → AI·NAVER API → Application 등록 → **CLOVA Voice** 선택
 2. 발급된 Client ID / Client Secret 을 `.env` 의 `CLOVA_CLIENT_ID`, `CLOVA_CLIENT_SECRET` 에 입력
 3. 기본 화자: 유나(vyuna) · 고은(vgoeun) · 아라(vara) · 아라 기본(nara) · 미경(vmikyung) · 다인(vdain)

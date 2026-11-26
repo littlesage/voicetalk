@@ -1,4 +1,4 @@
-// 클라우드 TTS: 네이버 CLOVA Voice (Premium) + Google Cloud TTS
+// 클라우드 TTS: ElevenLabs + 네이버 CLOVA Voice (Premium) + Google Cloud TTS
 // - 키가 있는 업체만 켜짐. 둘 다 없으면 브라우저 내장 음성으로 동작.
 // - 음성 id 는 "업체:음성" 형식 (예: "clova:vyuna", "google:ko-KR-Chirp3-HD-Sulafat").
 // - 다른 업체를 붙일 땐 PROVIDERS 에 { enabled, list(), synth() } 하나 추가.
@@ -152,9 +152,82 @@ const google = {
   },
 };
 
+// ---------------- ElevenLabs ----------------
+// 보이스 라이브러리(elevenlabs.io → Voices → Library)에서 마음에 드는 목소리를
+// "Add to my voices" 하면 여기 목록에 자동으로 나타남. (귀여운/나긋한/속삭이는 목소리 등)
+const XI_KEY = process.env.ELEVENLABS_API_KEY;
+const XI_BASE = process.env.ELEVENLABS_BASE_URL ?? "https://api.elevenlabs.io/v1"; // 테스트용 덮어쓰기 가능
+// eleven_multilingual_v2: 표현력 좋음(기본) / eleven_flash_v2_5: 더 빠르고 저렴
+const XI_MODEL = process.env.ELEVENLABS_MODEL ?? "eleven_multilingual_v2";
+let xiCache = null;
+let xiCacheAt = 0;
+
+const XI_WORDS = {
+  cute: "귀여운", sweet: "달콤한", soft: "부드러운", calm: "차분한", warm: "따뜻한", gentle: "다정한",
+  seductive: "매혹적인", sultry: "나른한", sensual: "나긋한", sexy: "섹시한", husky: "허스키한", breathy: "숨결 섞인",
+  whisper: "속삭이는", whispery: "속삭이는", asmr: "ASMR", soothing: "편안한", bright: "밝은", young: "앳된",
+  playful: "장난스러운", cheerful: "명랑한", mature: "성숙한", deep: "낮은", confident: "당당한", casual: "편한",
+};
+function xiStyle(v) {
+  const l = v.labels || {};
+  const raw = [l.descriptive, l.description, l.use_case].filter(Boolean).join(" ").toLowerCase();
+  const ko = [...new Set(raw.split(/[\s,_/-]+/).map((w) => XI_WORDS[w]).filter(Boolean))];
+  return ko.slice(0, 2).join(" ");
+}
+
+const elevenlabs = {
+  enabled: Boolean(XI_KEY),
+  async list() {
+    // 사용자가 사이트에서 목소리를 추가하면 바로 반영되도록 10분 캐시
+    if (xiCache && Date.now() - xiCacheAt < 10 * 60_000) return xiCache;
+    const r = await fetch(`${XI_BASE}/voices`, { headers: { "xi-api-key": XI_KEY } });
+    if (!r.ok) throw new Error(`elevenlabs voices ${r.status}: ${(await r.text()).slice(0, 300)}`);
+    const { voices = [] } = await r.json();
+    xiCache = voices
+      .map((v) => {
+        const g = (v.labels?.gender || "").toLowerCase();
+        const mine = v.category !== "premade"; // 직접 추가한 목소리 = 추천
+        const korean = /korean|ko\b|한국/i.test(JSON.stringify(v.labels || {}) + v.name);
+        return {
+          id: "elevenlabs:" + v.voice_id,
+          name: v.name.replace(/\s*[-–|].*$/, "").slice(0, 24),
+          style: xiStyle(v),
+          gender: g === "female" ? "여성" : g === "male" ? "남성" : "",
+          provider: "ElevenLabs",
+          pick: mine,
+          pitch: false,
+          _order: (mine ? 0 : 2) + (korean ? 0 : 1),
+        };
+      })
+      .sort((a, b) => a._order - b._order || a.name.localeCompare(b.name));
+    xiCacheAt = Date.now();
+    return xiCache;
+  },
+  async synth(voiceId, { text, rate }) {
+    const r = await fetch(`${XI_BASE}/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "xi-api-key": XI_KEY, Accept: "audio/mpeg" },
+      body: JSON.stringify({
+        text,
+        model_id: XI_MODEL,
+        language_code: XI_MODEL.startsWith("eleven_flash") || XI_MODEL.startsWith("eleven_turbo") ? "ko" : undefined,
+        voice_settings: {
+          stability: 0.45,
+          similarity_boost: 0.8,
+          style: 0.25,
+          use_speaker_boost: true,
+          speed: Math.min(1.2, Math.max(0.7, Number(rate) || 1)),
+        },
+      }),
+    });
+    if (!r.ok) throw new Error(`elevenlabs ${r.status}: ${(await r.text()).slice(0, 300)}`);
+    return Buffer.from(await r.arrayBuffer());
+  },
+};
+
 // ---------------- 공통 ----------------
-// 순서 = 목록 표시 순서 (CLOVA 가 한국어에 더 자연스러워서 먼저)
-const PROVIDERS = { clova, google };
+// 순서 = 목록 표시 순서 (직접 고른 ElevenLabs 목소리 → CLOVA → Google)
+const PROVIDERS = { elevenlabs, clova, google };
 
 export const ttsEnabled = Object.values(PROVIDERS).some((p) => p.enabled);
 export const ttsProviders = Object.entries(PROVIDERS)
