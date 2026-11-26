@@ -26,7 +26,7 @@ const MIME = {
 };
 
 // 첫 인사를 받기 위한 숨은 사용자 턴 (화면에는 보이지 않음)
-const CALL_START = "(통화가 연결되었습니다. 먼저 짧게 인사해 주세요.)";
+const CALL_START = "(사용자가 이어폰을 끼고 들어왔습니다. 먼저 짧게 속삭이며 인사해 주세요.)";
 
 function sanitizeHistory(raw) {
   if (!Array.isArray(raw)) return null;
@@ -115,7 +115,7 @@ async function handleChat(req, res) {
     const final = await stream.finalMessage();
     if (final.stop_reason === "refusal") {
       send("delta", {
-        text: "지금 이 이야기는 제가 잘 이어가기 어려워요. 그래도 당신 곁에 있을게요. 힘들다면 109에 전화해서 이야기 나눠볼 수도 있어요.",
+        text: "[whispers] 음, 그 이야기는 제가 이어가기 어려워요. 대신 다른 이야기 해줄까요?",
       });
     }
     send("done", { stop_reason: final.stop_reason });
@@ -218,5 +218,5 @@ server.listen(PORT, () => {
       : "🔈 클라우드 TTS 꺼짐 → 브라우저 음성 사용 (.env 에 CLOVA_* 또는 GOOGLE_TTS_API_KEY 를 넣으면 켜짐)"
   );
   if (!APP_PASSWORD) console.warn("⚠ APP_PASSWORD 가 없어요. 인터넷에 공개한다면 꼭 설정하세요.");
-  console.log(`VoiceTalk 멘탈케어 AI → http://localhost:${PORT}  (model=${MODEL}, effort=${EFFORT})`);
+  console.log(`속삭임 ASMR AI → http://localhost:${PORT}  (model=${MODEL}, effort=${EFFORT})`);
 });

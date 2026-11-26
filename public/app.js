@@ -1,4 +1,5 @@
-// 마음 통화 - 브라우저 측: 음성 인식(STT) → 서버(Claude) 스트리밍 → 문장 단위 음성 합성(TTS)
+// 속삭임 (대화형 ASMR) - 브라우저 측: 음성 인식(STT) → 서버(Claude) 스트리밍 → 문장 단위 속삭임 음성(TTS)
+// + 배경음(빗소리/파도/장작불, WebAudio 로 생성) + 바이노럴(목소리가 귀 사이를 천천히 이동)
 (() => {
   const $ = (id) => document.getElementById(id);
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -10,7 +11,9 @@
   const api = (url, opts = {}) =>
     fetch(url, { ...opts, headers: { ...(opts.headers || {}), "x-app-password": appPw } });
 
-  const VOICE_TUNING = { haru: { rate: 0.95, pitch: 1.0 }, dal: { rate: 0.88, pitch: 0.9 }, sol: { rate: 1.02, pitch: 1.1 } };
+  const VOICE_TUNING = { haru: { rate: 0.85, pitch: 1.0 }, dal: { rate: 0.8, pitch: 0.9 }, sol: { rate: 0.92, pitch: 1.15 } };
+  // [whispers] 같은 음성 지시어는 자막·기기 음성에서 지움
+  const stripTags = (t) => t.replace(/\[[^\]]{1,30}\]\s*/g, "").replace(/\s{2,}/g, " ").trim();
   const SILENCE_MS = 1400; // 이만큼 조용하면 말이 끝난 것으로 봄
 
   let persona = "haru";
@@ -123,7 +126,7 @@
   };
   $("rate").oninput = (e) => { voiceCfg.rate = Number(e.target.value); store.set("voiceCfg", voiceCfg); };
   $("pitch").oninput = (e) => { voiceCfg.pitch = Number(e.target.value); store.set("voiceCfg", voiceCfg); };
-  $("previewBtn").onclick = () => preview();
+  $("previewBtn").onclick = () => { ensureAudio(); preview(); };
 
   // 추천 여성 목소리 이어 듣기: 같은 문장을 목소리별로 차례대로 들려줌 (다시 누르면 멈춤)
   let compareGen = 0;
@@ -137,6 +140,7 @@
     }
     const list = cloudVoices.filter((v) => v.pick);
     if (!list.length) return;
+    ensureAudio();
     const my = ++compareGen;
     comparing = true;
     btn.textContent = "멈추기";
@@ -144,7 +148,7 @@
     for (const v of list) {
       if (my !== compareGen) break;
       $("voiceSel").value = "cloud:" + v.id; // 지금 나오는 목소리를 목록에 표시
-      const blob = await fetchCloudAudio(`${v.style ? v.style + " 목소리예요" : "안녕하세요"}. 오늘 하루도 정말 수고 많았어요.`, v.id);
+      const blob = await fetchCloudAudio(`[whispers] ${v.style ? v.style + " 목소리예요" : "안녕하세요"}. 편하게 눈 감고 들어요.`, v.id);
       if (!blob || my !== compareGen) continue;
       player.src = URL.createObjectURL(blob);
       await new Promise((res) => {
@@ -159,7 +163,7 @@
   };
 
   function makeUtterance(text) {
-    const u = new SpeechSynthesisUtterance(text);
+    const u = new SpeechSynthesisUtterance(stripTags(text));
     u.lang = "ko-KR";
     if (koVoice) u.voice = koVoice;
     u.rate = voiceCfg.rate;
@@ -182,6 +186,133 @@
 
   const player = new Audio();
   player.preload = "auto";
+
+  // ---------- 소리: 배경음 + 바이노럴 ----------
+  const soundCfg = { ambient: "rain", binaural: true, ...(store.get("soundCfg") || {}) };
+  let actx = null;
+  let ambientGain = null;
+  let ambientNodes = [];
+  let pannerLfoGain = null;
+
+  function ensureAudio() {
+    if (actx) {
+      actx.resume?.();
+      return;
+    }
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    actx = new AC();
+    // 목소리: player → 스테레오 패너(LFO 로 좌우 천천히 이동) → 출력
+    try {
+      const src = actx.createMediaElementSource(player);
+      const pan = actx.createStereoPanner();
+      const lfo = actx.createOscillator();
+      lfo.frequency.value = 1 / 9; // 9초에 한 번 왼쪽↔오른쪽
+      pannerLfoGain = actx.createGain();
+      pannerLfoGain.gain.value = soundCfg.binaural ? 0.75 : 0;
+      lfo.connect(pannerLfoGain).connect(pan.pan);
+      lfo.start();
+      src.connect(pan).connect(actx.destination);
+    } catch {}
+    ambientGain = actx.createGain();
+    ambientGain.gain.value = 0;
+    ambientGain.connect(actx.destination);
+    startAmbient(soundCfg.ambient);
+  }
+
+  function noiseBuffer(kind) {
+    const len = actx.sampleRate * 4;
+    const buf = actx.createBuffer(2, len, actx.sampleRate);
+    for (let ch = 0; ch < 2; ch++) {
+      const d = buf.getChannelData(ch);
+      let last = 0;
+      for (let i = 0; i < len; i++) {
+        const w = Math.random() * 2 - 1;
+        if (kind === "brown") {
+          last = (last + 0.02 * w) / 1.02;
+          d[i] = last * 3.5;
+        } else d[i] = w;
+      }
+    }
+    return buf;
+  }
+
+  function loopNoise(kind) {
+    const n = actx.createBufferSource();
+    n.buffer = noiseBuffer(kind);
+    n.loop = true;
+    n.start();
+    ambientNodes.push(n);
+    return n;
+  }
+
+  function startAmbient(type) {
+    if (!actx) return;
+    ambientNodes.forEach((n) => { try { n.stop?.(); n.disconnect(); } catch {} });
+    ambientNodes = [];
+    if (type === "rain") {
+      const bp = actx.createBiquadFilter();
+      bp.type = "bandpass"; bp.frequency.value = 1800; bp.Q.value = 0.4;
+      const hp = actx.createBiquadFilter();
+      hp.type = "highpass"; hp.frequency.value = 400;
+      const g = actx.createGain(); g.gain.value = 0.25;
+      loopNoise("white").connect(bp).connect(hp).connect(g).connect(ambientGain);
+      const low = actx.createGain(); low.gain.value = 0.35;
+      loopNoise("brown").connect(low).connect(ambientGain);
+      ambientNodes.push(bp, hp, g, low);
+    } else if (type === "waves") {
+      const lp = actx.createBiquadFilter();
+      lp.type = "lowpass"; lp.frequency.value = 900;
+      const swell = actx.createGain(); swell.gain.value = 0.5;
+      const lfo = actx.createOscillator(); lfo.frequency.value = 1 / 7;
+      const depth = actx.createGain(); depth.gain.value = 0.45;
+      lfo.connect(depth).connect(swell.gain); lfo.start();
+      loopNoise("brown").connect(lp).connect(swell).connect(ambientGain);
+      ambientNodes.push(lp, swell, lfo, depth);
+    } else if (type === "fire") {
+      const lp = actx.createBiquadFilter();
+      lp.type = "lowpass"; lp.frequency.value = 500;
+      const base = actx.createGain(); base.gain.value = 0.6;
+      loopNoise("brown").connect(lp).connect(base).connect(ambientGain);
+      // 탁탁 튀는 소리
+      const crackleBuf = noiseBuffer("white");
+      const crackle = () => {
+        if (!ambientNodes.length || soundCfg.ambient !== "fire") return;
+        const s = actx.createBufferSource(); s.buffer = crackleBuf;
+        const hp = actx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 2000 + Math.random() * 3000;
+        const g = actx.createGain(); const t = actx.currentTime;
+        g.gain.setValueAtTime(0.05 + Math.random() * 0.25, t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.02 + Math.random() * 0.05);
+        s.connect(hp).connect(g).connect(ambientGain);
+        s.start(t, Math.random() * 3, 0.1);
+        setTimeout(crackle, 60 + Math.random() * 500);
+      };
+      ambientNodes.push(lp, base);
+      crackle();
+    }
+    setAmbientLevel(1);
+  }
+
+  // 듣는 중엔 배경음을 줄여서 마이크에 덜 들어가게
+  function setAmbientLevel(level) {
+    if (!actx || !ambientGain) return;
+    const vol = soundCfg.ambient === "none" ? 0 : 0.35 * level;
+    ambientGain.gain.setTargetAtTime(vol, actx.currentTime, 0.4);
+  }
+
+  $("ambientSel").value = soundCfg.ambient;
+  $("binaural").checked = soundCfg.binaural;
+  $("ambientSel").onchange = (e) => {
+    soundCfg.ambient = e.target.value;
+    store.set("soundCfg", soundCfg);
+    ensureAudio();
+    startAmbient(soundCfg.ambient);
+  };
+  $("binaural").onchange = (e) => {
+    soundCfg.binaural = e.target.checked;
+    store.set("soundCfg", soundCfg);
+    if (pannerLfoGain) pannerLfoGain.gain.value = soundCfg.binaural ? 0.75 : 0;
+  };
   // 무음 WAV (iOS 등에서 사용자 제스처 안에 오디오 재생을 한 번 풀어두기 위함)
   function unlockAudio() {
     const buf = new ArrayBuffer(46);
@@ -198,7 +329,7 @@
   function preview() {
     const name = personas.find((p) => p.id === persona)?.name ?? "하루";
     const hasBatchim = (name.charCodeAt(name.length - 1) - 0xac00) % 28 > 0;
-    const text = `안녕하세요, 저 ${name}${hasBatchim ? "이에요" : "예요"}. 오늘도 수고 많았어요.`;
+    const text = `[whispers] 안녕하세요, 저 ${name}${hasBatchim ? "이에요" : "예요"}. 오늘도 수고 많았어요.`;
     synth?.cancel();
     player.pause();
     if (isCloud()) {
@@ -281,12 +412,13 @@
   // ---------- 화면 상태 ----------
   function setState(s, label) {
     state = s;
+    if (typeof setAmbientLevel === "function") setAmbientLevel(s === "listening" ? 0.4 : s === "off" ? 0 : 1);
     const orb = $("orb");
     orb.className = "orb " + ({ listening: "listening", thinking: "thinking", speaking: "speaking" }[s] || "idle");
     const text =
       label ??
       {
-        listening: muted ? "음소거 중이에요" : "듣고 있어요…",
+        listening: muted ? "마이크 꺼짐" : "듣고 있어요… 편하게 말해요",
         thinking: "",
         speaking: "",
         waiting: "",
@@ -325,6 +457,7 @@
       synth.speak(u);
     }
     unlockAudio();
+    ensureAudio();
     // 마이크 권한을 미리 받아둠
     if (SR && navigator.mediaDevices?.getUserMedia) {
       try {
@@ -339,6 +472,7 @@
     $("lobby").hidden = true;
     $("call").hidden = false;
     $("callName").textContent = personas.find((p) => p.id === persona)?.name ?? "하루";
+    setAmbientLevel(1);
     $("timer").textContent = "00:00";
     setCaption("");
     if (!SR) $("textForm").hidden = false;
@@ -348,6 +482,7 @@
   };
 
   $("hangBtn").onclick = () => {
+    setAmbientLevel(0);
     state = "off";
     gen++;
     uttering = false;
@@ -482,13 +617,21 @@
       const re = /^([\s\S]*?[.!?…~。]+)(\s+|$)/;
       let m;
       while ((m = pending.match(re)) && (m[2] || force)) {
-        enqueueSpeech(m[1].trim());
+        speakSentence(m[1].trim());
         pending = pending.slice(m[0].length);
       }
       if (force && pending.trim()) {
-        enqueueSpeech(pending.trim());
+        speakSentence(pending.trim());
         pending = "";
       }
+    };
+    // 문장이 잘려도 속삭임 지시어가 이어지도록, 지시어 없는 문장엔 직전 지시어를 붙임
+    let lastTag = "";
+    const speakSentence = (sent) => {
+      const tag = sent.match(/^\[[^\]]{1,30}\]/);
+      if (tag) lastTag = tag[0];
+      else if (lastTag) sent = lastTag + " " + sent;
+      if (stripTags(sent)) enqueueSpeech(sent);
     };
 
     try {
@@ -518,21 +661,21 @@
           if (ev === "delta") {
             full += data.text;
             pending += data.text;
-            setCaption(full, userText);
+            setCaption(stripTags(full), userText);
             flushSentences(false);
           } else if (ev === "error") {
             full += (full ? " " : "") + data.message;
             pending += " " + data.message;
-            setCaption(full, userText);
+            setCaption(stripTags(full), userText);
           }
         }
       }
       flushSentences(true);
     } catch (err) {
       if (state === "off" || err.name === "AbortError") return;
-      const msg = "연결이 잠깐 불안정해요. 다시 말해 줄래요?";
+      const msg = "[whispers] 잠깐 연결이 흔들렸어요. 다시 말해 줄래요?";
       full = msg;
-      setCaption(msg, userText);
+      setCaption(stripTags(msg), userText);
       enqueueSpeech(msg);
     } finally {
       streamDone = true;
@@ -560,7 +703,7 @@
       setTimeout(done, Math.min(6000, 400 + text.length * 90));
       return;
     }
-    const u = makeUtterance(text);
+    const u = makeUtterance(stripTags(text));
     u.onend = u.onerror = done;
     try {
       synth.speak(u);

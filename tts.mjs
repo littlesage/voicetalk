@@ -3,6 +3,8 @@
 // - 음성 id 는 "업체:음성" 형식 (예: "clova:vyuna", "google:ko-KR-Chirp3-HD-Sulafat").
 // - 다른 업체를 붙일 땐 PROVIDERS 에 { enabled, list(), synth() } 하나 추가.
 
+import { stripTags } from "./prompt.mjs";
+
 // ---------------- CLOVA Voice ----------------
 const CLOVA_ID = process.env.CLOVA_CLIENT_ID;
 const CLOVA_SECRET = process.env.CLOVA_CLIENT_SECRET;
@@ -56,7 +58,7 @@ const clova = {
   async synth(speaker, { text, rate, pitch }) {
     const body = new URLSearchParams({
       speaker,
-      text,
+      text: stripTags(text),
       volume: "0",
       speed: String(clovaSpeed(rate)),
       pitch: String(clovaPitch(pitch)),
@@ -144,7 +146,7 @@ const google = {
     const r = await fetch(`${G_BASE}/text:synthesize`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Goog-Api-Key": G_KEY },
-      body: JSON.stringify({ input: { text }, voice: { languageCode: "ko-KR", name }, audioConfig }),
+      body: JSON.stringify({ input: { text: stripTags(text) }, voice: { languageCode: "ko-KR", name }, audioConfig }),
     });
     if (!r.ok) throw new Error(`google ${r.status}: ${(await r.text()).slice(0, 300)}`);
     const { audioContent } = await r.json();
@@ -157,8 +159,11 @@ const google = {
 // "Add to my voices" 하면 여기 목록에 자동으로 나타남. (귀여운/나긋한/속삭이는 목소리 등)
 const XI_KEY = process.env.ELEVENLABS_API_KEY;
 const XI_BASE = process.env.ELEVENLABS_BASE_URL ?? "https://api.elevenlabs.io/v1"; // 테스트용 덮어쓰기 가능
-// eleven_multilingual_v2: 표현력 좋음(기본) / eleven_flash_v2_5: 더 빠르고 저렴
-const XI_MODEL = process.env.ELEVENLABS_MODEL ?? "eleven_multilingual_v2";
+// eleven_v3: [whispers] 같은 지시어로 속삭임 연기 가능 (ASMR 기본)
+// eleven_multilingual_v2: 안정적 / eleven_flash_v2_5: 빠르고 저렴 (이 둘은 지시어를 지우고 읽음)
+const XI_MODEL = process.env.ELEVENLABS_MODEL ?? "eleven_v3";
+const XI_FALLBACK_MODEL = "eleven_multilingual_v2";
+let xiV3Broken = false; // v3 호출이 모델 오류로 실패하면 이후엔 v2 사용
 let xiCache = null;
 let xiCacheAt = 0;
 
@@ -279,23 +284,41 @@ const elevenlabs = {
   },
 };
 
-function xiTts(voiceId, text, rate) {
-  return fetch(`${XI_BASE}/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", "xi-api-key": XI_KEY, Accept: "audio/mpeg" },
-    body: JSON.stringify({
-      text,
-      model_id: XI_MODEL,
-      language_code: XI_MODEL.startsWith("eleven_flash") || XI_MODEL.startsWith("eleven_turbo") ? "ko" : undefined,
-      voice_settings: {
-        stability: 0.45,
-        similarity_boost: 0.8,
-        style: 0.25,
-        use_speaker_boost: true,
-        speed: Math.min(1.2, Math.max(0.7, Number(rate) || 1)),
-      },
-    }),
-  });
+async function xiTts(voiceId, text, rate) {
+  const call = (model) => {
+    const v3 = model === "eleven_v3";
+    return fetch(`${XI_BASE}/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "xi-api-key": XI_KEY, Accept: "audio/mpeg" },
+      body: JSON.stringify({
+        // v3 만 [whispers] 같은 지시어를 연기로 처리. 나머지 모델엔 지시어를 지워서 보냄
+        text: v3 ? text : stripTags(text),
+        model_id: model,
+        language_code: /^eleven_(flash|turbo)/.test(model) ? "ko" : undefined,
+        voice_settings: v3
+          ? { stability: 0.5, similarity_boost: 0.8 } // v3: 0=창의적, 0.5=자연스러움, 1=안정적
+          : {
+              stability: 0.45,
+              similarity_boost: 0.8,
+              style: 0.25,
+              use_speaker_boost: true,
+              speed: Math.min(1.2, Math.max(0.7, Number(rate) || 1)),
+            },
+      }),
+    });
+  };
+  const model = XI_MODEL === "eleven_v3" && xiV3Broken ? XI_FALLBACK_MODEL : XI_MODEL;
+  const r = await call(model);
+  // v3 를 쓸 수 없는 계정/상황이면 v2 로 자동 전환 (목소리 없음 오류는 제외)
+  if (!r.ok && model === "eleven_v3" && r.status >= 400 && r.status < 500) {
+    const body = await r.clone().text();
+    if (!/voice_not_found|voice not found/i.test(body)) {
+      console.error("[tts elevenlabs] v3 실패 → v2 로 전환:", body.slice(0, 200));
+      xiV3Broken = true;
+      return call(XI_FALLBACK_MODEL);
+    }
+  }
+  return r;
 }
 
 // ---------------- 공통 ----------------

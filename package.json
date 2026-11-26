@@ -2,7 +2,7 @@
   "name": "voicetalk-mental-care",
   "version": "0.1.0",
   "private": true,
-  "description": "보이스톡처럼 대화하는 멘탈케어 AI (LLM 기반 대사)",
+  "description": "속삭임 — 대화형 ASMR AI (LLM 대사 + 속삭임 음성 + 배경음)",
   "type": "module",
   "main": "server.mjs",
   "scripts": {
