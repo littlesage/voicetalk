@@ -21,7 +21,8 @@
   let timerId = null;
   let koVoice = null;
 
-  // ---------- 목소리 설정 (기기에 설치된 한국어 음성 중 선택) ----------
+  // ---------- 목소리 설정 ----------
+  // 선택값: "cloud:<id>" (서버의 고음질 클라우드 TTS) 또는 "device:<name>" (브라우저 내장 음성)
   const store = {
     get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
@@ -31,41 +32,68 @@
   const MALE = /injoon|hyunsu|minsu|bongjin|gookmin|jinho|male|남성/i;
   const genderOf = (v) => (MALE.test(v.name) ? "남성" : FEMALE.test(v.name) ? "여성" : "");
   const voiceCfg = { name: null, rate: 0.95, pitch: 1.0, ...(store.get("voiceCfg") || {}) };
-  let koVoices = [];
+  let koVoices = []; // 기기 음성
+  let cloudVoices = []; // 클라우드 음성 [{id, gender, tier, pitch}]
 
-  function pickVoice() {
-    if (!synth) return;
-    koVoices = synth.getVoices().filter((v) => v.lang?.toLowerCase().replace("_", "-").startsWith("ko"));
-    koVoice =
-      koVoices.find((v) => v.name === voiceCfg.name) ||
-      // 자연스러운 음성 우선 (기기별 이름이 다름)
-      koVoices.find((v) => /natural|neural|premium|enhanced|yuna|google/i.test(v.name)) ||
-      koVoices[0] ||
-      null;
+  const isCloud = () => voiceCfg.name?.startsWith("cloud:") && cloudVoices.some((v) => "cloud:" + v.id === voiceCfg.name);
+  const cloudVoice = () => cloudVoices.find((v) => "cloud:" + v.id === voiceCfg.name);
+
+  function refreshVoices() {
+    koVoices = synth
+      ? synth.getVoices().filter((v) => v.lang?.toLowerCase().replace("_", "-").startsWith("ko"))
+      : [];
+    const valid =
+      cloudVoices.some((v) => "cloud:" + v.id === voiceCfg.name) ||
+      koVoices.some((v) => "device:" + v.name === voiceCfg.name);
+    if (!valid || !voiceCfg.userPicked) {
+      // 기본값: 클라우드 여성 고음질 > 기기의 자연스러운 음성 > 아무거나
+      const c = cloudVoices.find((v) => v.gender === "여성") || cloudVoices[0];
+      const d = koVoices.find((v) => /natural|neural|premium|enhanced|yuna|google/i.test(v.name)) || koVoices[0];
+      voiceCfg.name = c ? "cloud:" + c.id : d ? "device:" + d.name : null;
+    }
+    koVoice = koVoices.find((v) => "device:" + v.name === voiceCfg.name) ||
+      koVoices.find((v) => /natural|neural|premium|enhanced|yuna|google/i.test(v.name)) || koVoices[0] || null;
     renderVoiceSettings();
   }
 
   function renderVoiceSettings() {
     const sel = $("voiceSel");
     sel.textContent = "";
-    if (!koVoices.length) {
+    const addGroup = (label, items) => {
+      if (!items.length) return;
+      const g = document.createElement("optgroup");
+      g.label = label;
+      for (const [value, text] of items) {
+        const o = document.createElement("option");
+        o.value = value;
+        o.textContent = text;
+        o.selected = value === voiceCfg.name;
+        g.appendChild(o);
+      }
+      sel.appendChild(g);
+    };
+    addGroup(
+      "고음질 (클라우드)",
+      cloudVoices.map((v) => ["cloud:" + v.id, `[${v.gender || "?"}] ${v.tier} · ${v.id.replace(/^ko-KR-/, "").replace(/^(Chirp3-HD|Neural2|Wavenet|Standard)-/, "")}`])
+    );
+    addGroup(
+      "이 기기 음성",
+      koVoices.map((v) => {
+        const g = genderOf(v);
+        return ["device:" + v.name, (g ? `[${g}] ` : "") + v.name.replace(/^(Microsoft|Google)\s*/, "")];
+      })
+    );
+    if (!sel.options.length) {
       const o = document.createElement("option");
       o.textContent = synth ? "기기 기본 한국어 음성" : "음성 출력 미지원";
       sel.appendChild(o);
-      sel.disabled = true;
-    } else {
-      sel.disabled = false;
-      for (const v of koVoices) {
-        const o = document.createElement("option");
-        const g = genderOf(v);
-        o.value = v.name;
-        o.textContent = (g ? `[${g}] ` : "") + v.name.replace(/^(Microsoft|Google)\s*/, "");
-        o.selected = v === koVoice;
-        sel.appendChild(o);
-      }
     }
+    sel.disabled = !cloudVoices.length && !koVoices.length;
     $("rate").value = voiceCfg.rate;
     $("pitch").value = voiceCfg.pitch;
+    const noPitch = isCloud() && !cloudVoice()?.pitch;
+    $("pitch").disabled = noPitch;
+    $("pitchNote").hidden = !noPitch;
   }
 
   function applyPersonaVoice(id) {
@@ -78,8 +106,9 @@
 
   $("voiceSel").onchange = (e) => {
     voiceCfg.name = e.target.value;
-    koVoice = koVoices.find((v) => v.name === voiceCfg.name) || koVoice;
+    voiceCfg.userPicked = true;
     store.set("voiceCfg", voiceCfg);
+    refreshVoices();
     preview();
   };
   $("rate").oninput = (e) => { voiceCfg.rate = Number(e.target.value); store.set("voiceCfg", voiceCfg); };
@@ -95,18 +124,59 @@
     return u;
   }
 
-  function preview() {
-    if (!synth) return;
-    const name = personas.find((p) => p.id === persona)?.name ?? "하루";
-    synth.cancel();
-    const hasBatchim = (name.charCodeAt(name.length - 1) - 0xac00) % 28 > 0;
-    synth.speak(makeUtterance(`안녕하세요, 저 ${name}${hasBatchim ? "이에요" : "예요"}. 오늘도 수고 많았어요.`));
+  // 클라우드 TTS: 문장 → mp3 Blob (실패하면 null → 기기 음성으로 대체)
+  function fetchCloudAudio(text) {
+    const v = cloudVoice();
+    if (!v) return Promise.resolve(null);
+    return fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text, voice: v.id, rate: voiceCfg.rate, pitch: voiceCfg.pitch }),
+    })
+      .then((r) => (r.ok ? r.blob() : null))
+      .catch(() => null);
   }
 
-  if (synth) {
-    pickVoice();
-    synth.onvoiceschanged = pickVoice;
-  } else renderVoiceSettings();
+  const player = new Audio();
+  player.preload = "auto";
+  // 무음 WAV (iOS 등에서 사용자 제스처 안에 오디오 재생을 한 번 풀어두기 위함)
+  function unlockAudio() {
+    const buf = new ArrayBuffer(46);
+    const d = new DataView(buf);
+    const w = (o, str) => [...str].forEach((c, i) => d.setUint8(o + i, c.charCodeAt(0)));
+    w(0, "RIFF"); d.setUint32(4, 38, true); w(8, "WAVE"); w(12, "fmt ");
+    d.setUint32(16, 16, true); d.setUint16(20, 1, true); d.setUint16(22, 1, true);
+    d.setUint32(24, 8000, true); d.setUint32(28, 16000, true); d.setUint16(32, 2, true); d.setUint16(34, 16, true);
+    w(36, "data"); d.setUint32(40, 2, true);
+    player.src = URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+    player.play().catch(() => {});
+  }
+
+  function preview() {
+    const name = personas.find((p) => p.id === persona)?.name ?? "하루";
+    const hasBatchim = (name.charCodeAt(name.length - 1) - 0xac00) % 28 > 0;
+    const text = `안녕하세요, 저 ${name}${hasBatchim ? "이에요" : "예요"}. 오늘도 수고 많았어요.`;
+    synth?.cancel();
+    player.pause();
+    if (isCloud()) {
+      fetchCloudAudio(text).then((blob) => {
+        if (blob) {
+          player.src = URL.createObjectURL(blob);
+          player.play().catch(() => {});
+        } else synth?.speak(makeUtterance(text));
+      });
+    } else synth?.speak(makeUtterance(text));
+  }
+
+  if (synth) synth.onvoiceschanged = refreshVoices;
+  refreshVoices();
+  fetch("/api/tts/voices")
+    .then((r) => r.json())
+    .then((d) => {
+      cloudVoices = d.enabled ? d.voices : [];
+      refreshVoices();
+    })
+    .catch(() => {});
 
   const warn = [];
   if (!SR) warn.push("이 브라우저는 음성 인식을 지원하지 않아요. 크롬/엣지/사파리를 쓰거나 키보드로 대화할 수 있어요.");
@@ -184,6 +254,7 @@
       u.volume = 0;
       synth.speak(u);
     }
+    unlockAudio();
     // 마이크 권한을 미리 받아둠
     if (SR && navigator.mediaDevices?.getUserMedia) {
       try {
@@ -214,6 +285,8 @@
     stopListening();
     ttsQueue = [];
     synth?.cancel();
+    player.onended = player.onerror = null;
+    player.pause();
     clearInterval(timerId);
     $("call").hidden = true;
     $("lobby").hidden = false;
@@ -400,40 +473,68 @@
   }
 
   // ---------- 음성 합성 ----------
+  // 큐 항목: {text, audio}  audio = 클라우드 음성이면 미리 받아두는 Promise<Blob|null>
   let uttering = false; // 지금 한 문장을 읽는 중인지
   let gen = 0; // 끊기(interrupt) 시 증가 → 이전 콜백 무시
 
   function enqueueSpeech(text) {
     if (!text || state === "off") return;
-    ttsQueue.push(text);
+    // 클라우드 음성은 큐에 넣는 순간 받기 시작 → 앞 문장 읽는 동안 다음 문장 준비
+    ttsQueue.push({ text, audio: isCloud() ? fetchCloudAudio(text) : null });
     if (!uttering) speakNext();
   }
 
-  function speakNext() {
-    if (state === "off") return;
-    const next = ttsQueue.shift();
-    if (!next) {
-      uttering = false;
-      return maybeFinishSpeaking();
-    }
-    uttering = true;
-    setState("speaking");
-    const myGen = gen;
-    const done = () => {
-      if (myGen === gen) speakNext();
-    };
+  function speakDevice(text, done) {
     if (!synth) {
       // 음성 출력이 없으면 읽는 시간만큼 기다림
-      setTimeout(done, Math.min(6000, 400 + next.length * 90));
+      setTimeout(done, Math.min(6000, 400 + text.length * 90));
       return;
     }
-    const u = makeUtterance(next);
+    const u = makeUtterance(text);
     u.onend = u.onerror = done;
     try {
       synth.speak(u);
     } catch {
       setTimeout(done, 0);
     }
+  }
+
+  function speakNext() {
+    if (state === "off") return;
+    const item = ttsQueue.shift();
+    if (!item) {
+      uttering = false;
+      return maybeFinishSpeaking();
+    }
+    uttering = true;
+    setState("speaking");
+    const myGen = gen;
+    let finished = false;
+    const done = () => {
+      if (finished || myGen !== gen) return;
+      finished = true;
+      speakNext();
+    };
+    if (!item.audio) return speakDevice(item.text, done);
+
+    item.audio.then((blob) => {
+      if (myGen !== gen) return;
+      if (!blob) return speakDevice(item.text, done);
+      const url = URL.createObjectURL(blob);
+      const end = () => {
+        URL.revokeObjectURL(url);
+        done();
+      };
+      player.onended = end;
+      player.onerror = () => {
+        URL.revokeObjectURL(url);
+        if (myGen === gen && !finished) speakDevice(item.text, done);
+      };
+      player.src = url;
+      player.play().catch(() => {
+        if (myGen === gen && !finished) speakDevice(item.text, done);
+      });
+    });
   }
 
   function maybeFinishSpeaking() {
@@ -450,5 +551,7 @@
     streamDone = true;
     state = "waiting";
     synth?.cancel();
+    player.onended = player.onerror = null;
+    player.pause();
   }
 })();

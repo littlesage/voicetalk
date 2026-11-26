@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
 import { buildSystemPrompt, PERSONAS } from "./prompt.mjs";
+import { ttsEnabled, listVoices, synthesize } from "./tts.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(here, "public");
@@ -131,6 +132,33 @@ async function handleChat(req, res) {
   }
 }
 
+async function handleVoices(res) {
+  let voices = [];
+  try {
+    voices = await listVoices();
+  } catch (err) {
+    console.error("[tts voices]", err.message);
+  }
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ enabled: ttsEnabled && voices.length > 0, voices }));
+}
+
+async function handleTts(req, res) {
+  try {
+    const { text, voice, rate, pitch } = await readJson(req);
+    if (typeof text !== "string" || !text.trim() || text.length > 600) {
+      res.writeHead(400).end("bad text");
+      return;
+    }
+    const audio = await synthesize({ text, voice, rate, pitch });
+    res.writeHead(200, { "Content-Type": "audio/mpeg", "Content-Length": audio.length });
+    res.end(audio);
+  } catch (err) {
+    console.error("[tts]", err.message);
+    res.writeHead(502).end("tts failed");
+  }
+}
+
 async function serveStatic(req, res) {
   const url = new URL(req.url, "http://localhost");
   let rel = decodeURIComponent(url.pathname);
@@ -151,6 +179,8 @@ async function serveStatic(req, res) {
 
 const server = http.createServer((req, res) => {
   if (req.method === "POST" && req.url === "/api/chat") return handleChat(req, res);
+  if (req.method === "GET" && req.url === "/api/tts/voices") return handleVoices(res);
+  if (req.method === "POST" && req.url === "/api/tts") return handleTts(req, res);
   if (req.method === "GET" && req.url === "/api/personas") {
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(Object.entries(PERSONAS).map(([id, p]) => ({ id, name: p.name, desc: p.desc }))));
@@ -163,5 +193,6 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN)
     console.warn("⚠ ANTHROPIC_API_KEY 가 없어요. .env 에 넣거나 `ant auth login` 으로 로그인하세요.");
+  console.log(ttsEnabled ? "🔊 클라우드 TTS 사용 (Google)" : "🔈 클라우드 TTS 꺼짐 → 브라우저 음성 사용 (GOOGLE_TTS_API_KEY 로 켤 수 있음)");
   console.log(`VoiceTalk 멘탈케어 AI → http://localhost:${PORT}  (model=${MODEL}, effort=${EFFORT})`);
 });
