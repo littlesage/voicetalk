@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#1b1f2e" />
+  <title>마음 통화</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <main class="phone">
+    <!-- 대기 화면 -->
+    <section id="lobby" class="screen">
+      <h1>마음 통화</h1>
+      <p class="sub">말하고 싶을 때, 언제든 전화 걸어요.</p>
+      <div id="personas" class="personas"></div>
+      <button id="callBtn" class="round call" aria-label="통화 걸기">
+        <svg viewBox="0 0 24 24"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1A17 17 0 0 1 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1l-2.3 2.2z"/></svg>
+      </button>
+      <p class="note">AI와의 대화이며 전문 상담을 대신하지 않아요.<br/>위급할 땐 <b>109</b>(자살예방상담) · <b>1577-0199</b>(정신건강위기상담) · <b>119</b></p>
+      <p id="support" class="warn" hidden></p>
+    </section>
+
+    <!-- 통화 화면 -->
+    <section id="call" class="screen" hidden>
+      <div class="top">
+        <div id="callName" class="name">하루</div>
+        <div id="timer" class="timer">00:00</div>
+      </div>
+      <div class="orb-wrap">
+        <div id="orb" class="orb idle"></div>
+      </div>
+      <div id="status" class="status">연결 중…</div>
+      <div id="caption" class="caption"></div>
+
+      <form id="textForm" class="text-form" hidden>
+        <input id="textInput" autocomplete="off" placeholder="말 대신 글로 보내기" />
+        <button type="submit">보내기</button>
+      </form>
+
+      <div class="controls">
+        <button id="muteBtn" class="round small" aria-label="음소거">
+          <svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1A7 7 0 0 0 19 11h-2z"/></svg>
+        </button>
+        <button id="hangBtn" class="round hang" aria-label="통화 종료">
+          <svg viewBox="0 0 24 24"><path d="M12 9c-1.6 0-3.2.3-4.6.7v3.1c0 .4-.2.7-.6.9-1 .5-1.9 1.1-2.7 1.8-.2.2-.4.3-.7.3s-.5-.1-.7-.3L.3 13.1A1 1 0 0 1 0 12.4c0-.3.1-.5.3-.7A17 17 0 0 1 12 7c4.5 0 8.6 1.8 11.7 4.7.2.2.3.4.3.7s-.1.5-.3.7l-2.4 2.4c-.2.2-.4.3-.7.3s-.5-.1-.7-.3c-.8-.7-1.7-1.3-2.7-1.8a1 1 0 0 1-.6-.9V9.7C15.2 9.3 13.6 9 12 9z"/></svg>
+        </button>
+        <button id="kbdBtn" class="round small" aria-label="글로 입력">
+          <svg viewBox="0 0 24 24"><path d="M20 5H4a2 2 0 0 0-2 2v10c0 1.1.9 2 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"/></svg>
+        </button>
+      </div>
+    </section>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

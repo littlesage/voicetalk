@@ -1,0 +1,16 @@
+{
+  "name": "voicetalk-mental-care",
+  "version": "0.1.0",
+  "private": true,
+  "description": "보이스톡처럼 대화하는 멘탈케어 AI (LLM 기반 대사)",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.mjs",
+    "dev": "node --watch --env-file-if-exists=.env server.mjs"
+  },
+  "engines": { "node": ">=20.12" },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.14.0"
+  }
+}
