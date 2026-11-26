@@ -175,6 +175,31 @@ function xiStyle(v) {
   return ko.slice(0, 2).join(" ");
 }
 
+// 보이스 라이브러리 인기 한국어 여성 목소리 (많이 쓰인 순). 1시간 캐시.
+const XI_POPULAR_COUNT = Number(process.env.ELEVENLABS_POPULAR_COUNT ?? 10);
+let xiShared = null;
+let xiSharedAt = 0;
+const xiAdded = new Map(); // 공유 목소리 → 내 목소리로 추가된 voice_id
+
+async function xiPopular() {
+  if (xiShared && Date.now() - xiSharedAt < 60 * 60_000) return xiShared;
+  const q = new URLSearchParams({
+    page_size: String(Math.min(100, XI_POPULAR_COUNT * 2)),
+    language: "ko",
+    gender: "female",
+    sort: "cloned_by_count",
+  });
+  const r = await fetch(`${XI_BASE}/shared-voices?${q}`, { headers: { "xi-api-key": XI_KEY } });
+  if (!r.ok) throw new Error(`elevenlabs shared ${r.status}: ${(await r.text()).slice(0, 300)}`);
+  const { voices = [] } = await r.json();
+  xiShared = voices
+    .filter((v) => v.voice_id && v.public_owner_id)
+    .sort((x, y) => (y.cloned_by_count ?? 0) - (x.cloned_by_count ?? 0))
+    .slice(0, XI_POPULAR_COUNT);
+  xiSharedAt = Date.now();
+  return xiShared;
+}
+
 const elevenlabs = {
   enabled: Boolean(XI_KEY),
   async list() {
@@ -183,47 +208,95 @@ const elevenlabs = {
     const r = await fetch(`${XI_BASE}/voices`, { headers: { "xi-api-key": XI_KEY } });
     if (!r.ok) throw new Error(`elevenlabs voices ${r.status}: ${(await r.text()).slice(0, 300)}`);
     const { voices = [] } = await r.json();
-    xiCache = voices
-      .map((v) => {
-        const g = (v.labels?.gender || "").toLowerCase();
-        const mine = v.category !== "premade"; // 직접 추가한 목소리 = 추천
-        const korean = /korean|ko\b|한국/i.test(JSON.stringify(v.labels || {}) + v.name);
-        return {
-          id: "elevenlabs:" + v.voice_id,
+    const mineIds = new Set(voices.map((v) => v.voice_id));
+    const mineNames = new Set(voices.map((v) => v.name));
+    const mine = voices.map((v) => {
+      const g = (v.labels?.gender || "").toLowerCase();
+      const own = v.category !== "premade"; // 직접 추가한 목소리 = 추천
+      const korean = /korean|ko\b|한국/i.test(JSON.stringify(v.labels || {}) + v.name);
+      return {
+        id: "elevenlabs:" + v.voice_id,
+        name: v.name.replace(/\s*[-–|].*$/, "").slice(0, 24),
+        style: xiStyle(v),
+        gender: g === "female" ? "여성" : g === "male" ? "남성" : "",
+        provider: "ElevenLabs",
+        pick: own,
+        pitch: false,
+        _order: own ? 0 : korean ? 3 : 4,
+      };
+    });
+
+    // 인기 목소리 (이미 내 목록에 있는 건 제외)
+    let popular = [];
+    try {
+      popular = (await xiPopular())
+        .filter((v) => !mineIds.has(v.voice_id) && !mineNames.has(v.name))
+        .map((v, i) => ({
+          id: `elevenlabs:shared:${v.public_owner_id}:${v.voice_id}`,
           name: v.name.replace(/\s*[-–|].*$/, "").slice(0, 24),
-          style: xiStyle(v),
-          gender: g === "female" ? "여성" : g === "male" ? "남성" : "",
-          provider: "ElevenLabs",
-          pick: mine,
+          style: xiStyle({ labels: { descriptive: v.descriptive, use_case: v.use_case } }) || "인기",
+          gender: "여성",
+          provider: `ElevenLabs 인기 ${i + 1}위`,
+          pick: i < 5, // 상위 5개 ★
           pitch: false,
-          _order: (mine ? 0 : 2) + (korean ? 0 : 1),
-        };
-      })
-      .sort((a, b) => a._order - b._order || a.name.localeCompare(b.name));
+          _order: i < 5 ? 1 : 2,
+          _rank: i,
+        }));
+    } catch (err) {
+      console.error("[tts elevenlabs popular]", err.message);
+    }
+
+    xiCache = [...mine, ...popular].sort(
+      (a, b) => a._order - b._order || (a._rank ?? 0) - (b._rank ?? 0) || a.name.localeCompare(b.name)
+    );
     xiCacheAt = Date.now();
     return xiCache;
   },
-  async synth(voiceId, { text, rate }) {
-    const r = await fetch(`${XI_BASE}/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "xi-api-key": XI_KEY, Accept: "audio/mpeg" },
-      body: JSON.stringify({
-        text,
-        model_id: XI_MODEL,
-        language_code: XI_MODEL.startsWith("eleven_flash") || XI_MODEL.startsWith("eleven_turbo") ? "ko" : undefined,
-        voice_settings: {
-          stability: 0.45,
-          similarity_boost: 0.8,
-          style: 0.25,
-          use_speaker_boost: true,
-          speed: Math.min(1.2, Math.max(0.7, Number(rate) || 1)),
-        },
-      }),
-    });
+  async synth(voiceRef, { text, rate }) {
+    // 공유(라이브러리) 목소리: 바로 시도 → 안 되면 내 목소리로 추가 후 재시도
+    let voiceId = voiceRef;
+    let shared = null;
+    if (voiceRef.startsWith("shared:")) {
+      const [, owner, id] = voiceRef.split(":");
+      shared = { owner, id };
+      voiceId = xiAdded.get(id) ?? id;
+    }
+    let r = await xiTts(voiceId, text, rate);
+    if (!r.ok && shared && !xiAdded.has(shared.id) && r.status >= 400 && r.status < 500) {
+      const add = await fetch(`${XI_BASE}/voices/add/${encodeURIComponent(shared.owner)}/${encodeURIComponent(shared.id)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "xi-api-key": XI_KEY },
+        body: JSON.stringify({ new_name: xiShared?.find((v) => v.voice_id === shared.id)?.name ?? `voicetalk-${shared.id.slice(0, 8)}` }),
+      });
+      if (!add.ok) throw new Error(`elevenlabs add ${add.status}: ${(await add.text()).slice(0, 300)}`);
+      const added = (await add.json()).voice_id ?? shared.id;
+      xiAdded.set(shared.id, added);
+      xiCache = null; // 내 목록이 바뀌었으니 다시 읽기
+      r = await xiTts(added, text, rate);
+    }
     if (!r.ok) throw new Error(`elevenlabs ${r.status}: ${(await r.text()).slice(0, 300)}`);
     return Buffer.from(await r.arrayBuffer());
   },
 };
+
+function xiTts(voiceId, text, rate) {
+  return fetch(`${XI_BASE}/text-to-speech/${encodeURIComponent(voiceId)}?output_format=mp3_44100_128`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "xi-api-key": XI_KEY, Accept: "audio/mpeg" },
+    body: JSON.stringify({
+      text,
+      model_id: XI_MODEL,
+      language_code: XI_MODEL.startsWith("eleven_flash") || XI_MODEL.startsWith("eleven_turbo") ? "ko" : undefined,
+      voice_settings: {
+        stability: 0.45,
+        similarity_boost: 0.8,
+        style: 0.25,
+        use_speaker_boost: true,
+        speed: Math.min(1.2, Math.max(0.7, Number(rate) || 1)),
+      },
+    }),
+  });
+}
 
 // ---------------- 공통 ----------------
 // 순서 = 목록 표시 순서 (직접 고른 ElevenLabs 목소리 → CLOVA → Google)
@@ -250,9 +323,13 @@ export async function listVoices() {
 
 // text → MP3 Buffer
 export async function synthesize({ text, voice, rate = 1, pitch = 1 }) {
-  const voices = await listVoices();
-  const v = voices.find((x) => x.id === voice) ?? voices[0];
-  if (!v) throw new Error("사용 가능한 클라우드 음성이 없음");
-  const [key, ...rest] = v.id.split(":");
+  // 요청한 업체가 켜져 있으면 목록 확인 없이 바로 사용 (라이브러리에서 추가된 직후 등)
+  let id = typeof voice === "string" ? voice : "";
+  if (!PROVIDERS[id.split(":")[0]]?.enabled) {
+    const voices = await listVoices();
+    id = voices[0]?.id;
+    if (!id) throw new Error("사용 가능한 클라우드 음성이 없음");
+  }
+  const [key, ...rest] = id.split(":");
   return PROVIDERS[key].synth(rest.join(":"), { text, rate, pitch });
 }

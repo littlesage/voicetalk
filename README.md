@@ -53,9 +53,10 @@ npm start              # http://localhost:3000
 
 ### ElevenLabs (캐릭터 목소리: 귀여운 · 나긋한 · 속삭이는 …)
 1. https://elevenlabs.io 가입 → 프로필 → **API Keys** 에서 키 발급 → `ELEVENLABS_API_KEY`
-2. **Voices → Library** 에서 `Korean` 으로 검색하고 cute / soft / seductive / whisper 같은 태그로 골라 들어보기
-3. 마음에 드는 목소리에서 **Add to my voices** → 앱 목록 맨 위에 ★ 로 나옴 (10분 안에 반영)
-- 무료 플랜은 월 1만 자 정도라 짧게 테스트용, 계속 쓰려면 유료 플랜 필요
+2. 키만 넣으면 보이스 라이브러리의 **인기 한국어 여성 목소리 TOP 10**(많이 쓰인 순)이 자동으로 목록에 나옵니다 (상위 5개 ★).
+   처음 쓸 때 내 계정 목소리로 자동 추가됩니다. (`ELEVENLABS_POPULAR_COUNT` 로 개수 조절)
+3. 직접 고르고 싶으면 **Voices → Library** 에서 `Korean` 검색 → cute / soft / seductive / whisper 태그로 들어보고 **Add to my voices** → 앱 목록 맨 위에 나옴 (10분 안에 반영)
+- 무료 플랜은 월 1만 자 정도라 짧게 테스트용, 계속 쓰려면 유료 플랜 필요. 계정에 담을 수 있는 목소리 수도 플랜별로 제한이 있어서, 꽉 차면 사이트에서 안 쓰는 목소리를 지우세요.
 - `ELEVENLABS_MODEL=eleven_flash_v2_5` 로 바꾸면 더 빠르고 저렴 (기본 `eleven_multilingual_v2` 는 표현력 우선)
 
 ### 네이버 CLOVA Voice
