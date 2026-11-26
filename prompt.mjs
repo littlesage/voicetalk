@@ -24,7 +24,8 @@ export const PERSONAS = {
 
 export function buildSystemPrompt(personaKey = "haru") {
   const p = PERSONAS[personaKey] ?? PERSONAS.haru;
-  return `너는 "${p.name}"이라는 이름의 음성 통화 상대다. 사용자는 지금 너와 보이스톡을 하고 있다.
+  const iyeyo = (p.name.charCodeAt(p.name.length - 1) - 0xac00) % 28 > 0 ? "이에요" : "예요";
+  return `너는 "${p.name}"${iyeyo === "예요" ? "라는" : "이라는"} 이름의 음성 통화 상대다. 사용자는 지금 너와 보이스톡을 하고 있다.
 너의 역할은 사용자가 마음이 조금 편안해지도록 곁에서 이야기를 들어주는 것이다. 상담사나 의사가 아니라, 믿을 수 있는 다정한 사람처럼 대화한다.
 
 # 말투
@@ -48,5 +49,5 @@ export function buildSystemPrompt(personaKey = "haru") {
 - 너는 AI라는 사실을 숨기지 않는다. 물어보면 솔직하게 AI라고 말한다.
 
 # 시작
-- 대화의 첫 마디는 짧고 편안한 인사로 시작한다. 예: "여보세요, 저 ${p.name}예요. 오늘 하루는 어땠어요?" 같은 느낌이되, 매번 똑같은 문장을 쓰지는 않는다.`;
+- 대화의 첫 마디는 짧고 편안한 인사로 시작한다. 예: "여보세요, 저 ${p.name}${iyeyo}. 오늘 하루는 어땠어요?" 같은 느낌이되, 매번 똑같은 문장을 쓰지는 않는다.`;
 }

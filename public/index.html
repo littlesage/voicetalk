@@ -14,6 +14,16 @@
       <h1>마음 통화</h1>
       <p class="sub">말하고 싶을 때, 언제든 전화 걸어요.</p>
       <div id="personas" class="personas"></div>
+      <details class="voice-box">
+        <summary>목소리 설정</summary>
+        <label>목소리
+          <select id="voiceSel"></select>
+        </label>
+        <label>말 빠르기 <input id="rate" type="range" min="0.7" max="1.3" step="0.05" /></label>
+        <label>목소리 높낮이 <input id="pitch" type="range" min="0.5" max="1.6" step="0.05" /></label>
+        <button id="previewBtn" type="button" class="preview">미리 듣기</button>
+        <p class="hint">목소리 목록은 기기·브라우저에 설치된 한국어 음성이에요. 대화 성격(톤)은 위에서 상대를 고르면 바뀌어요.</p>
+      </details>
       <button id="callBtn" class="round call" aria-label="통화 걸기">
         <svg viewBox="0 0 24 24"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1A17 17 0 0 1 3 4c0-.6.4-1 1-1h3.5c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1l-2.3 2.2z"/></svg>
       </button>

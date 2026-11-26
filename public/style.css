@@ -25,7 +25,7 @@ body {
 h1 { font-weight: 600; margin: 40px 0 4px; letter-spacing: -0.02em; }
 .sub { color: var(--muted); margin: 0 0 28px; }
 
-.personas { display: grid; gap: 10px; width: 100%; margin-bottom: auto; }
+.personas { display: grid; gap: 10px; width: 100%; }
 .persona {
   display: flex; gap: 12px; align-items: center; text-align: left;
   padding: 14px 16px; border-radius: 16px; border: 1px solid transparent;
@@ -89,3 +89,21 @@ h1 { font-weight: 600; margin: 40px 0 4px; letter-spacing: -0.02em; }
 .text-form button { padding: 0 16px; border-radius: 12px; border: none; background: var(--accent); color: var(--bg); font: inherit; font-weight: 600; }
 
 .controls { display: flex; gap: 32px; align-items: center; justify-content: center; }
+
+.voice-box {
+  width: 100%; margin: 12px 0 auto; text-align: left; padding: 12px 16px;
+  border-radius: 16px; background: rgba(255,255,255,0.06);
+}
+.voice-box summary { cursor: pointer; font-weight: 600; }
+.voice-box label { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; font-size: 14px; color: var(--muted); }
+.voice-box select {
+  padding: 10px; border-radius: 10px; border: none; font: inherit;
+  background: rgba(255,255,255,0.1); color: var(--fg);
+}
+.voice-box select option { color: #111; }
+.voice-box input[type=range] { width: 100%; accent-color: var(--accent); }
+.voice-box .preview {
+  margin-top: 14px; padding: 10px 14px; border-radius: 10px; border: none;
+  background: var(--accent); color: var(--bg); font: inherit; font-weight: 600; cursor: pointer;
+}
+.voice-box .hint { font-size: 12px; color: var(--muted); margin: 10px 0 0; line-height: 1.5; }

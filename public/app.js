@@ -21,18 +21,92 @@
   let timerId = null;
   let koVoice = null;
 
-  // ---------- 준비 ----------
+  // ---------- 목소리 설정 (기기에 설치된 한국어 음성 중 선택) ----------
+  const store = {
+    get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+  };
+  // 브라우저는 음성의 성별을 알려주지 않아서, 알려진 이름으로 추정
+  const FEMALE = /yuna|sora|sunhi|heami|seoyeon|jimin|yujin|seohyeon|google|female|여성/i;
+  const MALE = /injoon|hyunsu|minsu|bongjin|gookmin|jinho|male|남성/i;
+  const genderOf = (v) => (MALE.test(v.name) ? "남성" : FEMALE.test(v.name) ? "여성" : "");
+  const voiceCfg = { name: null, rate: 0.95, pitch: 1.0, ...(store.get("voiceCfg") || {}) };
+  let koVoices = [];
+
   function pickVoice() {
     if (!synth) return;
-    const voices = synth.getVoices().filter((v) => v.lang?.toLowerCase().startsWith("ko"));
-    // 자연스러운 음성 우선 (기기별 이름이 다름)
+    koVoices = synth.getVoices().filter((v) => v.lang?.toLowerCase().replace("_", "-").startsWith("ko"));
     koVoice =
-      voices.find((v) => /natural|neural|premium|enhanced|yuna|google/i.test(v.name)) || voices[0] || null;
+      koVoices.find((v) => v.name === voiceCfg.name) ||
+      // 자연스러운 음성 우선 (기기별 이름이 다름)
+      koVoices.find((v) => /natural|neural|premium|enhanced|yuna|google/i.test(v.name)) ||
+      koVoices[0] ||
+      null;
+    renderVoiceSettings();
   }
+
+  function renderVoiceSettings() {
+    const sel = $("voiceSel");
+    sel.textContent = "";
+    if (!koVoices.length) {
+      const o = document.createElement("option");
+      o.textContent = synth ? "기기 기본 한국어 음성" : "음성 출력 미지원";
+      sel.appendChild(o);
+      sel.disabled = true;
+    } else {
+      sel.disabled = false;
+      for (const v of koVoices) {
+        const o = document.createElement("option");
+        const g = genderOf(v);
+        o.value = v.name;
+        o.textContent = (g ? `[${g}] ` : "") + v.name.replace(/^(Microsoft|Google)\s*/, "");
+        o.selected = v === koVoice;
+        sel.appendChild(o);
+      }
+    }
+    $("rate").value = voiceCfg.rate;
+    $("pitch").value = voiceCfg.pitch;
+  }
+
+  function applyPersonaVoice(id) {
+    const t = VOICE_TUNING[id] ?? VOICE_TUNING.haru;
+    voiceCfg.rate = t.rate;
+    voiceCfg.pitch = t.pitch;
+    store.set("voiceCfg", voiceCfg);
+    renderVoiceSettings();
+  }
+
+  $("voiceSel").onchange = (e) => {
+    voiceCfg.name = e.target.value;
+    koVoice = koVoices.find((v) => v.name === voiceCfg.name) || koVoice;
+    store.set("voiceCfg", voiceCfg);
+    preview();
+  };
+  $("rate").oninput = (e) => { voiceCfg.rate = Number(e.target.value); store.set("voiceCfg", voiceCfg); };
+  $("pitch").oninput = (e) => { voiceCfg.pitch = Number(e.target.value); store.set("voiceCfg", voiceCfg); };
+  $("previewBtn").onclick = () => preview();
+
+  function makeUtterance(text) {
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "ko-KR";
+    if (koVoice) u.voice = koVoice;
+    u.rate = voiceCfg.rate;
+    u.pitch = voiceCfg.pitch;
+    return u;
+  }
+
+  function preview() {
+    if (!synth) return;
+    const name = personas.find((p) => p.id === persona)?.name ?? "하루";
+    synth.cancel();
+    const hasBatchim = (name.charCodeAt(name.length - 1) - 0xac00) % 28 > 0;
+    synth.speak(makeUtterance(`안녕하세요, 저 ${name}${hasBatchim ? "이에요" : "예요"}. 오늘도 수고 많았어요.`));
+  }
+
   if (synth) {
     pickVoice();
     synth.onvoiceschanged = pickVoice;
-  }
+  } else renderVoiceSettings();
 
   const warn = [];
   if (!SR) warn.push("이 브라우저는 음성 인식을 지원하지 않아요. 크롬/엣지/사파리를 쓰거나 키보드로 대화할 수 있어요.");
@@ -57,6 +131,7 @@
         b.querySelector("small").textContent = p.desc;
         b.onclick = () => {
           persona = p.id;
+          applyPersonaVoice(p.id);
           box.querySelectorAll(".persona").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
         };
         box.appendChild(b);
@@ -352,12 +427,7 @@
       setTimeout(done, Math.min(6000, 400 + next.length * 90));
       return;
     }
-    const u = new SpeechSynthesisUtterance(next);
-    u.lang = "ko-KR";
-    if (koVoice) u.voice = koVoice;
-    const t = VOICE_TUNING[persona] ?? VOICE_TUNING.haru;
-    u.rate = t.rate;
-    u.pitch = t.pitch;
+    const u = makeUtterance(next);
     u.onend = u.onerror = done;
     try {
       synth.speak(u);
