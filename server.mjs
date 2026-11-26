@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Anthropic from "@anthropic-ai/sdk";
 import { buildSystemPrompt, PERSONAS } from "./prompt.mjs";
-import { ttsEnabled, listVoices, synthesize } from "./tts.mjs";
+import { ttsEnabled, ttsProviders, listVoices, synthesize } from "./tts.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(here, "public");
@@ -193,6 +193,10 @@ const server = http.createServer((req, res) => {
 server.listen(PORT, () => {
   if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN)
     console.warn("⚠ ANTHROPIC_API_KEY 가 없어요. .env 에 넣거나 `ant auth login` 으로 로그인하세요.");
-  console.log(ttsEnabled ? "🔊 클라우드 TTS 사용 (Google)" : "🔈 클라우드 TTS 꺼짐 → 브라우저 음성 사용 (GOOGLE_TTS_API_KEY 로 켤 수 있음)");
+  console.log(
+    ttsEnabled
+      ? `🔊 클라우드 TTS 사용: ${ttsProviders.join(", ")}`
+      : "🔈 클라우드 TTS 꺼짐 → 브라우저 음성 사용 (.env 에 CLOVA_* 또는 GOOGLE_TTS_API_KEY 를 넣으면 켜짐)"
+  );
   console.log(`VoiceTalk 멘탈케어 AI → http://localhost:${PORT}  (model=${MODEL}, effort=${EFFORT})`);
 });

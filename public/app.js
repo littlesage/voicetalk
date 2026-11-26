@@ -76,7 +76,7 @@
       "고음질 (클라우드)",
       cloudVoices.map((v) => [
         "cloud:" + v.id,
-        `${v.pick ? "★ " : ""}[${v.gender || "?"}] ${v.style ? v.style + " 목소리 · " : v.tier + " · "}${v.id.replace(/^ko-KR-/, "").replace(/^(Chirp3-HD|Neural2|Wavenet|Standard)-/, "")}`,
+        `${v.pick ? "★ " : ""}[${v.gender || "?"}] ${v.style ? v.style + " · " : ""}${v.name} (${v.provider})`,
       ])
     );
     addGroup(
@@ -138,7 +138,7 @@
     for (const v of list) {
       if (my !== compareGen) break;
       $("voiceSel").value = "cloud:" + v.id; // 지금 나오는 목소리를 목록에 표시
-      const blob = await fetchCloudAudio(`${v.style} 목소리예요. 오늘 하루도 정말 수고 많았어요.`, v.id);
+      const blob = await fetchCloudAudio(`${v.style ? v.style + " 목소리예요" : "안녕하세요"}. 오늘 하루도 정말 수고 많았어요.`, v.id);
       if (!blob || my !== compareGen) continue;
       player.src = URL.createObjectURL(blob);
       await new Promise((res) => {
